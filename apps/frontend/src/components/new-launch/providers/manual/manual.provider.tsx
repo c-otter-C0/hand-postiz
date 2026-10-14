@@ -5,7 +5,7 @@ import {
   PostComment,
   withProvider,
 } from '@gitroom/frontend/components/new-launch/providers/high.order.provider';
-import { ManualSettingsDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/manual.dto';
+import { ManualDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/manual.dto';
 import { Input } from '@gitroom/react/form/input';
 import { useSettings } from '@gitroom/frontend/components/launches/helpers/use.values';
 
@@ -26,6 +26,6 @@ export default withProvider({
   minimumCharacters: [],
   SettingsComponent: ManualSettings,
   CustomPreviewComponent: undefined,
-  dto: ManualSettingsDto,
+  dto: ManualDto,
   maximumCharacters: 100000,
 });
