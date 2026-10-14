@@ -114,7 +114,9 @@ export class IntegrationService {
     customInstanceDetails?: string
   ) {
     const uploadedPicture = picture
-      ? picture?.indexOf('imagedelivery.net') > -1
+      ? picture?.indexOf('imagedelivery.net') > -1 ||
+        // bundled static icon (e.g. the by-hand platform icons): nothing to upload
+        picture.startsWith('/icons/')
         ? picture
         : await this.storage.uploadSimple(picture).catch((err) => {
             console.log('Failed to upload profile picture:', picture, err);
@@ -169,6 +171,10 @@ export class IntegrationService {
 
   updateCustomName(org: string, id: string, name: string) {
     return this._integrationRepository.updateCustomName(org, id, name);
+  }
+
+  updateToken(org: string, id: string, token: string, picture: string) {
+    return this._integrationRepository.updateToken(org, id, token, picture);
   }
 
   updateNameAndUrl(id: string, name: string, url: string) {

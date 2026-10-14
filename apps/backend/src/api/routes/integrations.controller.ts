@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -22,6 +23,13 @@ import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/po
 import { IntegrationTimeDto } from '@gitroom/nestjs-libraries/dtos/integrations/integration.time.dto';
 import { IntegrationNameDto } from '@gitroom/nestjs-libraries/dtos/integrations/integration.name.dto';
 import { CustomerNameDto } from '@gitroom/nestjs-libraries/dtos/integrations/customer.name.dto';
+import { ManualCardDto } from '@gitroom/nestjs-libraries/dtos/integrations/manual.card.dto';
+import {
+  decodeManualToken,
+  encodeManualToken,
+  manualPicture,
+  parseManualFields,
+} from '@gitroom/nestjs-libraries/integrations/social/manual.provider';
 import { PlugDto } from '@gitroom/nestjs-libraries/dtos/plugs/plug.dto';
 import {
   Disconnect,
@@ -97,6 +105,59 @@ export class IntegrationsController {
     @Body() body: { name: string }
   ) {
     return this._integrationService.updateOnCustomerName(org.id, id, body.name);
+  }
+
+  // "By hand" channel card: the non-secret details kept in the token, plus the display name.
+  @Get('/:id/manual-card')
+  async getManualCard(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    const integration = await this.getManualIntegration(org.id, id);
+    const { platform, handle, profile_url, login_email, notes } =
+      decodeManualToken(integration.token);
+    return {
+      name: integration.customName || integration.name,
+      platform: platform || 'other',
+      handle: handle || '',
+      profile_url: profile_url || '',
+      login_email: login_email || '',
+      notes: notes || '',
+    };
+  }
+
+  @Put('/:id/manual-card')
+  async updateManualCard(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string,
+    @Body() body: ManualCardDto
+  ) {
+    await this.getManualIntegration(org.id, id);
+    const fields = parseManualFields(body);
+    if (!fields) {
+      throw new BadRequestException('Invalid channel details');
+    }
+    await this._integrationService.updateToken(
+      org.id,
+      id,
+      encodeManualToken(fields),
+      manualPicture(fields.platform)
+    );
+    if (body.name !== undefined) {
+      await this._integrationService.updateCustomName(org.id, id, body.name);
+    }
+    return { ...fields, name: body.name };
+  }
+
+  private async getManualIntegration(org: string, id: string) {
+    const integration = await this._integrationService.getIntegrationById(
+      org,
+      id
+    );
+    if (!integration || integration.providerIdentifier !== 'manual') {
+      throw new BadRequestException('Not a by-hand channel');
+    }
+    return integration;
   }
 
   @Put('/:id/custom-name')

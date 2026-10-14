@@ -33,6 +33,129 @@ import { ModalWrapperComponent } from '@gitroom/frontend/components/new-launch/m
 import copy from 'copy-to-clipboard';
 import { Input } from '@gitroom/react/form/input';
 import { Button } from '@gitroom/react/form/button';
+import { Select } from '@gitroom/react/form/select';
+import { Textarea } from '@gitroom/react/form/textarea';
+import useSWR from 'swr';
+
+const manualPlatforms = [
+  'instagram',
+  'tiktok',
+  'reddit',
+  'x',
+  'threads',
+  'linkedin',
+  'youtube',
+  'pinterest',
+  'facebook',
+  'other',
+];
+
+// "By hand" channels: a record card (details + notes) instead of a bare rename.
+const ManualCardModal: FC<{
+  id: string;
+  close: () => void;
+  onSave: () => void;
+}> = (props) => {
+  const t = useT();
+  const { close, id, onSave } = props;
+  const fetch = useFetch();
+  const toast = useToaster();
+  const load = useCallback(async () => {
+    return (await fetch(`/integrations/${id}/manual-card`)).json();
+  }, [id]);
+  const { data } = useSWR(`manual-card-${id}`, load, {
+    revalidateOnFocus: false,
+  });
+  const [form, setForm] = useState<Record<string, string> | null>(null);
+  const values = form || data;
+  const set = (key: string) => (e: { target: { value: string } }) =>
+    setForm({ ...values, [key]: e.target.value });
+  const save = useCallback(async () => {
+    if (!values) {
+      return;
+    }
+    const res = await fetch(`/integrations/${id}/manual-card`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        ...values,
+        // the channel is renamed only when Name was edited
+        name: values.name !== data.name ? values.name : undefined,
+      }),
+    });
+    if (!res.ok) {
+      toast.show(
+        t(
+          'channel_card_invalid',
+          'Check the details: handle without spaces, https profile URL, valid email, notes up to 5000 characters'
+        ),
+        'warning'
+      );
+      return;
+    }
+    onSave();
+    close();
+  }, [values, data, id]);
+  if (!values) {
+    return <div className="text-[14px]">{t('loading', 'Loading...')}</div>;
+  }
+  return (
+    <div className="flex flex-col w-[560px] max-w-full">
+      <Input
+        name="name"
+        disableForm={true}
+        label={t('channel_name', 'Name')}
+        value={values.name}
+        onChange={set('name')}
+      />
+      <Select
+        name="platform"
+        disableForm={true}
+        label={t('platform', 'Platform')}
+        value={values.platform}
+        onChange={set('platform')}
+      >
+        {manualPlatforms.map((p) => (
+          <option key={p} value={p}>
+            {p}
+          </option>
+        ))}
+      </Select>
+      <Input
+        name="handle"
+        disableForm={true}
+        label={t('handle', 'Handle')}
+        value={values.handle}
+        onChange={set('handle')}
+      />
+      <Input
+        name="profile_url"
+        disableForm={true}
+        label={t('profile_url', 'Profile URL')}
+        placeholder="https://..."
+        value={values.profile_url}
+        onChange={set('profile_url')}
+      />
+      <Input
+        name="login_email"
+        disableForm={true}
+        label={t('login_email', 'Login email')}
+        value={values.login_email}
+        onChange={set('login_email')}
+      />
+      <Textarea
+        name="notes"
+        disableForm={true}
+        label={t('channel_notes', 'Notes')}
+        className="!min-h-[220px]"
+        value={values.notes}
+        onChange={set('notes')}
+      />
+      <Button onClick={save} className="mt-[8px]">
+        {t('save', 'Save')}
+      </Button>
+    </div>
+  );
+};
 
 const RenameChannelModal: FC<{
   name: string;
@@ -129,7 +252,10 @@ export const Menu: FC<{
 
       // Check if menu overflows right of viewport (small screens)
       if (menuRect.right > viewportWidth - padding) {
-        const newX = Math.max(padding, viewportWidth - menuRect.width - padding);
+        const newX = Math.max(
+          padding,
+          viewportWidth - menuRect.width - padding
+        );
         if (Math.abs(show.x - newX) > 1) {
           setShow((prev) => (prev ? { ...prev, x: newX } : false));
         }
@@ -155,7 +281,10 @@ export const Menu: FC<{
   const disableChannel = useCallback(async () => {
     if (
       !(await deleteDialog(
-        t('are_you_sure_disable_channel', 'Are you sure you want to disable this channel?'),
+        t(
+          'are_you_sure_disable_channel',
+          'Are you sure you want to disable this channel?'
+        ),
         t('disable_channel_title', 'Disable Channel')
       ))
     ) {
@@ -174,7 +303,10 @@ export const Menu: FC<{
   const deleteChannel = useCallback(async () => {
     if (
       !(await deleteDialog(
-        t('are_you_sure_delete_channel', 'Are you sure you want to delete this channel?'),
+        t(
+          'are_you_sure_delete_channel',
+          'Are you sure you want to delete this channel?'
+        ),
         t('delete_channel_title', 'Delete Channel')
       ))
     ) {
@@ -188,7 +320,10 @@ export const Menu: FC<{
     });
     if (deleteIntegration.status === 406) {
       toast.show(
-        t('delete_posts_before_channel', 'You have to delete all the posts associated with this channel before deleting it'),
+        t(
+          'delete_posts_before_channel',
+          'You have to delete all the posts associated with this channel before deleting it'
+        ),
         'warning'
       );
       return;
@@ -250,7 +385,10 @@ export const Menu: FC<{
       setShow(false);
       const channelId = integration.id;
       copy(channelId);
-      toast.show(t('channel_id_copied', 'Channel ID copied to clipboard'), 'success');
+      toast.show(
+        t('channel_id_copied', 'Channel ID copied to clipboard'),
+        'success'
+      );
     },
     [t]
   );
@@ -365,6 +503,26 @@ export const Menu: FC<{
     const findIntegration = integrations.find(
       (integration) => integration.id === id
     );
+    if (findIntegration?.identifier === 'manual') {
+      modal.openModal({
+        title: t('channel_card', 'Channel card'),
+        children: (close) => (
+          <ManualCardModal
+            id={id}
+            close={close}
+            onSave={() => {
+              mutate();
+              toast.show(
+                t('channel_card_saved', 'Channel card saved'),
+                'success'
+              );
+            }}
+          />
+        ),
+      });
+      setShow(false);
+      return;
+    }
     modal.openModal({
       title: t('rename_channel', 'Rename channel'),
       children: (close) => (
@@ -611,7 +769,9 @@ export const Menu: FC<{
               </svg>
             </div>
             <div className="text-[14px]">
-              {t('rename_channel', 'Rename channel')}
+              {findIntegration?.identifier === 'manual'
+                ? t('channel_card', 'Channel card')
+                : t('rename_channel', 'Rename channel')}
             </div>
           </div>
           {findIntegration?.name !== findIntegration?.originalName && (

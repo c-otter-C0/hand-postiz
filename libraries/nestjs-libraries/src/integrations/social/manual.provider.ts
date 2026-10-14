@@ -34,10 +34,20 @@ const blank = (value?: string) =>
   !value || value.trim() === '-' ? '' : value.trim();
 
 // The token holds the channel details (no secrets) so post() can fall back to the profile URL.
-const encode = (data: object) =>
-  `by-hand:${Buffer.from(JSON.stringify(data)).toString('base64')}`;
+export const manualPicture = (platform: string) =>
+  iconPlatforms.includes(platform)
+    ? `/icons/platforms/${platform}.png`
+    : '/icons/platforms/by-hand.png';
 
-const decode = (token: string): { profile_url?: string } => {
+export type ManualFields = {
+  platform: string;
+  handle: string;
+  profile_url: string;
+  login_email: string;
+  notes: string;
+};
+
+export const decodeManualToken = (token: string): Partial<ManualFields> => {
   try {
     return JSON.parse(
       Buffer.from(token.replace(/^by-hand:/, ''), 'base64').toString()
@@ -45,6 +55,26 @@ const decode = (token: string): { profile_url?: string } => {
   } catch {
     return {};
   }
+};
+
+export const encodeManualToken = (fields: ManualFields) =>
+  `by-hand:${Buffer.from(JSON.stringify(fields)).toString('base64')}`;
+
+// Shared by connect (authenticate) and the channel card; notes may be multi-line.
+export const parseManualFields = (body: any): ManualFields | null => {
+  const { platform, handle, profile_url } = body || {};
+  const login_email = blank(body?.login_email);
+  const notes = blank(body?.notes);
+  if (
+    !platformRegex.test(platform) ||
+    !handleRegex.test(handle) ||
+    !httpsUrlRegex.test(profile_url) ||
+    (login_email && !emailRegex.test(login_email)) ||
+    notes.length > 5000
+  ) {
+    return null;
+  }
+  return { platform, handle, profile_url, login_email, notes };
 };
 
 const farFuture = () => dayjs().add(200, 'year').unix() - dayjs().unix();
@@ -133,24 +163,12 @@ export class ManualProvider extends SocialAbstract implements SocialProvider {
   }) {
     try {
       const body = JSON.parse(Buffer.from(params.code, 'base64').toString());
-      const { platform, handle, profile_url } = body;
-      const login_email = blank(body.login_email);
-      if (
-        !platformRegex.test(platform) ||
-        !handleRegex.test(handle) ||
-        !httpsUrlRegex.test(profile_url) ||
-        (login_email && !emailRegex.test(login_email))
-      ) {
+      const fields = parseManualFields(body);
+      if (!fields) {
         return 'Invalid credentials';
       }
-
-      const token = encode({
-        platform,
-        handle,
-        profile_url,
-        login_email,
-        notes: blank(body.notes),
-      });
+      const { platform, handle } = fields;
+      const token = encodeManualToken(fields);
 
       return {
         id: `manual:${platform}:${handle}`,
@@ -159,9 +177,7 @@ export class ManualProvider extends SocialAbstract implements SocialProvider {
         // refresh() calls refreshToken(integration.refreshToken); keeping the token here lets it round-trip.
         refreshToken: token,
         expiresIn: farFuture(),
-        picture: iconPlatforms.includes(platform)
-          ? `/icons/platforms/${platform}.png`
-          : '/icons/platforms/by-hand.png',
+        picture: manualPicture(platform),
         username: handle,
       };
     } catch (e) {
@@ -181,7 +197,7 @@ export class ManualProvider extends SocialAbstract implements SocialProvider {
         id: firstPost.id,
         postId: randomUUID(),
         releaseURL:
-          firstPost.settings?.liveUrl || decode(accessToken).profile_url || '',
+          firstPost.settings?.liveUrl || decodeManualToken(accessToken).profile_url || '',
         status: 'completed',
       },
     ];

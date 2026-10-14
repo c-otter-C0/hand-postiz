@@ -1,4 +1,10 @@
-import { ManualProvider } from '@gitroom/nestjs-libraries/integrations/social/manual.provider';
+import {
+  ManualProvider,
+  decodeManualToken,
+  encodeManualToken,
+  manualPicture,
+  parseManualFields,
+} from '@gitroom/nestjs-libraries/integrations/social/manual.provider';
 
 const provider = new ManualProvider();
 
@@ -163,6 +169,41 @@ describe('ManualProvider', () => {
       expect(noLive[0].status).toBe('completed');
       expect(fetchSpy).not.toHaveBeenCalled();
       fetchSpy.mockRestore();
+    });
+  });
+
+  describe('channel card helpers', () => {
+    it('round-trips fields through the token, notes keep newlines', () => {
+      const fields = parseManualFields({ ...valid, notes: 'line1\nline2' })!;
+      expect(fields.notes).toBe('line1\nline2');
+      const token = encodeManualToken(fields);
+      expect(token).toMatch(/^by-hand:/);
+      expect(decodeManualToken(token)).toEqual(fields);
+    });
+
+    it('treats "-" as blank and rejects bad input', () => {
+      expect(
+        parseManualFields({ ...valid, notes: '-', login_email: '-' })
+      ).toMatchObject({ notes: '', login_email: '' });
+      expect(parseManualFields({ ...valid, platform: 'myspace' })).toBeNull();
+      expect(parseManualFields({ ...valid, handle: 'a b' })).toBeNull();
+      expect(
+        parseManualFields({ ...valid, profile_url: 'http://x.com' })
+      ).toBeNull();
+      expect(parseManualFields({ ...valid, login_email: 'nope' })).toBeNull();
+      expect(
+        parseManualFields({ ...valid, notes: 'x'.repeat(5000) })
+      ).not.toBeNull();
+      expect(
+        parseManualFields({ ...valid, notes: 'x'.repeat(5001) })
+      ).toBeNull();
+      expect(parseManualFields(undefined)).toBeNull();
+    });
+
+    it('decodes garbage to an empty object and picks a platform icon', () => {
+      expect(decodeManualToken('by-hand:!!!')).toEqual({});
+      expect(manualPicture('x')).toBe('/icons/platforms/x.png');
+      expect(manualPicture('other')).toBe('/icons/platforms/by-hand.png');
     });
   });
 });

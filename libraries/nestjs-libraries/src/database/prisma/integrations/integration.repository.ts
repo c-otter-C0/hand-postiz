@@ -119,6 +119,23 @@ export class IntegrationRepository {
     });
   }
 
+  updateToken(org: string, id: string, token: string, picture: string) {
+    return this._integration.model.integration.update({
+      select: {
+        id: true,
+      },
+      where: {
+        id,
+        organizationId: org,
+      },
+      data: {
+        token,
+        refreshToken: token,
+        picture,
+      },
+    });
+  }
+
   async setTimes(org: string, id: string, times: IntegrationTimeDto) {
     return this._integration.model.integration.update({
       select: {
